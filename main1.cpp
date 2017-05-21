@@ -1,3 +1,4 @@
+
 #include <sys/time.h>
 #include <iostream>
 #include <vector>
@@ -24,12 +25,12 @@
 #include <sys/mman.h>
 
 static volatile sig_atomic_t terminar = 0;
-void signal_handler(int signal)
+void signal_handler1(int signal)
 {
     terminar = 1;
 }
 
-unsigned long long tiempoActual_ms(){
+unsigned long long tiempoActual_ms1(){
     timeval time;
     gettimeofday(&time, NULL);
     unsigned long long  millis = (time.tv_sec * 1000) + (time.tv_usec / 1000);
@@ -38,7 +39,7 @@ unsigned long long tiempoActual_ms(){
 
 
 using namespace std;
-int main(int argc, char *argv[])
+int main1(int argc, char *argv[])
 {
     char* hostname;
     int sockfd, portno, n;
@@ -53,7 +54,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     //Capturar señal de Ctrl+C para terminar e lprograma
-    signal(SIGINT, signal_handler);
+    signal(SIGINT, signal_handler1);
 
     //Captura de parametros de la linea de comandos
     int anchoImagen, altoImagen;
@@ -97,60 +98,52 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    constexpr int nBufferesAPedir = 4;
     struct v4l2_requestbuffers bufrequest;
     bufrequest.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     bufrequest.memory = V4L2_MEMORY_MMAP;
-    bufrequest.count = nBufferesAPedir;
+    bufrequest.count = 1;
 
     if(ioctl(fd, VIDIOC_REQBUFS, &bufrequest) < 0){
         perror("VIDIOC_REQBUFS");
         exit(1);
     }
-    auto tipo = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    struct v4l2_buffer infoBufferes[nBufferesAPedir];
-    void* buffer_start[nBufferesAPedir];
-    for(int buff=0; buff<nBufferesAPedir; buff++){
-        auto& bufferinfo = infoBufferes[buff];
-        memset(&bufferinfo, 0, sizeof(bufferinfo));
+    struct v4l2_buffer bufferinfo;
+    memset(&bufferinfo, 0, sizeof(bufferinfo));
 
-        bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        bufferinfo.memory = V4L2_MEMORY_MMAP;
-        bufferinfo.index = buff;
+    bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    bufferinfo.memory = V4L2_MEMORY_MMAP;
+    bufferinfo.index = 0;
 
-        if(ioctl(fd, VIDIOC_QUERYBUF, &bufferinfo) < 0){
-            perror("VIDIOC_QUERYBUF");
-            exit(1);
-        }
-
-        buffer_start[buff] = mmap(
-            NULL,
-            bufferinfo.length,
-            PROT_READ | PROT_WRITE,
-            MAP_SHARED,
-            fd,
-            bufferinfo.m.offset
-        );
-
-        if(buffer_start[buff] == MAP_FAILED){
-            perror("mmap");
-            exit(1);
-        }
-
-        memset(buffer_start[buff], 0, bufferinfo.length);
-
-        //hacer e lbuffer disponible
-        if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0){
-            perror("VIDIOC_QBUF");
-            exit(1);
-        }
+    if(ioctl(fd, VIDIOC_QUERYBUF, &bufferinfo) < 0){
+        perror("VIDIOC_QUERYBUF");
+        exit(1);
     }
 
+    void* buffer_start = mmap(
+        NULL,
+        bufferinfo.length,
+        PROT_READ | PROT_WRITE,
+        MAP_SHARED,
+        fd,
+        bufferinfo.m.offset
+    );
 
+    if(buffer_start == MAP_FAILED){
+        perror("mmap");
+        exit(1);
+    }
+
+    memset(buffer_start, 0, bufferinfo.length);
+
+    //hacer e lbuffer disponible
+    if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0){
+        perror("VIDIOC_QBUF");
+        exit(1);
+    }
 
     //activar streaming
-    int type = tipo;
+    int type = bufferinfo.type;
     if(ioctl(fd, VIDIOC_STREAMON, &type) < 0){
         perror("VIDIOC_STREAMON");
         exit(1);
@@ -159,52 +152,33 @@ int main(int argc, char *argv[])
 
 
     //bucle principal
-    unsigned long long tiempoInicio = tiempoActual_ms();
+    unsigned long long tiempoInicio = tiempoActual_ms1();
     int cuardrosProcesados = 0;
-    int sgteBufferALeer = 0;
-    int nFrames = 0;
-    char bufferNombreArchivo[50];
     while(terminar==0){
         //esperar por el buffer de salida
-        auto& bufferinfo= infoBufferes[sgteBufferALeer];
         if(ioctl(fd, VIDIOC_DQBUF, &bufferinfo) < 0){
             perror("VIDIOC_QBUF");
             exit(1);
         }
         bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        bufferinfo.memory = V4L2_MEMORY_MMAP;
+           bufferinfo.memory = V4L2_MEMORY_MMAP;
 
 
-
-        if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0){
+       if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0){
                perror("VIDIOC_QBUF");
                exit(1);
-        }
+           }
 
         bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         bufferinfo.memory = V4L2_MEMORY_MMAP;
 
-         unsigned long long tiempoActual =  tiempoActual_ms();
+         unsigned long long tiempoActual =  tiempoActual_ms1();
          cuardrosProcesados++;
          if((tiempoActual-tiempoInicio)>1000){
             printf("Cuadros procesados el ultimo segundo: %d\r\n", cuardrosProcesados);
             tiempoInicio = tiempoActual;
             cuardrosProcesados = 0;
-            //guardar imagen
-            int jpgfile;
-            sprintf(bufferNombreArchivo, "myimage_%d.jpeg", nFrames);
-            if((jpgfile = open(bufferNombreArchivo, O_WRONLY | O_CREAT, 0660)) < 0){
-                perror("open");
-                exit(1);
-            }
-            write(jpgfile, buffer_start[sgteBufferALeer], bufferinfo.length);
-            close(jpgfile);
-            nFrames++;
-
          }
-
-         sgteBufferALeer++;
-         sgteBufferALeer%=nBufferesAPedir;
     }
 
 
@@ -224,13 +198,14 @@ int main(int argc, char *argv[])
 
 
 
-//    int jpgfile;
-//    if((jpgfile = open("myimage.jpeg", O_WRONLY | O_CREAT, 0660)) < 0){
-//        perror("open");
-//        exit(1);
-//    }
-//    write(jpgfile, buffer_start, bufferinfo.length);
-//    close(jpgfile);
+    int jpgfile;
+    if((jpgfile = open("myimage.jpeg", O_WRONLY | O_CREAT, 0660)) < 0){
+        perror("open");
+        exit(1);
+    }
+
+    write(jpgfile, buffer_start, bufferinfo.length);
+    close(jpgfile);
 
 
     close(fd);
