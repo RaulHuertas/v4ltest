@@ -19,7 +19,7 @@ void transmitirPorUDP(
 
 void transmitirPorUDP(
     int ancho, int alto, int formatoStream,
-    const unsigned char* datos, int longDatos,
+    const void* datos, int longDatos,
     int sockfd, struct sockaddr_in& serveraddr, int serverlen
 );
 

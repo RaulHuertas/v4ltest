@@ -22,7 +22,7 @@
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-
+#include "transmitirporudp.hpp"
 #include "opencv2/opencv.hpp"
 
 static volatile sig_atomic_t terminar = 0;
@@ -64,7 +64,13 @@ int main(int argc, char *argv[])
     anchoImagen = atoi(argv[3]);
     altoImagen = atoi(argv[4]);
 
-
+    Conexion conn;
+    conn.hostname = hostname;
+    conn.portno = portno;
+    if(!conn.abrirConexion()){
+        printf("Error conexion \r\n");
+        exit(EXIT_FAILURE);
+    }
     //abrir el archivo de la camara
     int fd =0;
     if((fd=open("/dev/video0", O_RDWR))<0){
@@ -99,7 +105,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    constexpr int nBufferesAPedir = 4;
+    constexpr int nBufferesAPedir =8;
     struct v4l2_requestbuffers bufrequest;
     bufrequest.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     bufrequest.memory = V4L2_MEMORY_MMAP;
@@ -166,44 +172,57 @@ int main(int argc, char *argv[])
     int sgteBufferALeer = 0;
     int nFrames = 0;
     char bufferNombreArchivo[50];
+
+    if(ioctl(fd, VIDIOC_DQBUF, &infoBufferes[0]) < 0){
+        perror("VIDIOC_QBUF");
+        exit(1);
+    }
+    int bufferAnterior = sgteBufferALeer;
+    sgteBufferALeer++;
+
     while(terminar==0){
         //esperar por el buffer de salida
+
+
+
+        //PROCESAR LA INFO
+        std::thread hilooProcesamiento(
+        [&](){
+            transmitirPorUDP(
+                anchoImagen, altoImagen, 0,
+                buffer_start[bufferAnterior], infoBufferes[bufferAnterior].length,
+                conn.sockfd, conn.serveraddr, conn.serverlen
+            );
+            if(ioctl(fd, VIDIOC_QBUF, &infoBufferes[bufferAnterior]) < 0){
+                   perror("VIDIOC_QBUF");
+                   exit(1);
+            }
+
+            infoBufferes[bufferAnterior].type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            infoBufferes[bufferAnterior].memory = V4L2_MEMORY_MMAP;
+
+             unsigned long long tiempoActual =  tiempoActual_ms();
+             cuardrosProcesados++;
+             if((tiempoActual-tiempoInicio)>1000){
+                printf("Cuadros procesados el ultimo segundo: %d\r\n", cuardrosProcesados);
+                tiempoInicio = tiempoActual;
+                cuardrosProcesados = 0;
+                nFrames++;
+
+             }
+        }
+        );
+
         auto& bufferinfo= infoBufferes[sgteBufferALeer];
         if(ioctl(fd, VIDIOC_DQBUF, &bufferinfo) < 0){
             perror("VIDIOC_QBUF");
             exit(1);
         }
+        hilooProcesamiento.join();
         bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         bufferinfo.memory = V4L2_MEMORY_MMAP;
+        bufferAnterior = sgteBufferALeer;
 
-
-
-        if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0){
-               perror("VIDIOC_QBUF");
-               exit(1);
-        }
-
-        bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        bufferinfo.memory = V4L2_MEMORY_MMAP;
-
-         unsigned long long tiempoActual =  tiempoActual_ms();
-         cuardrosProcesados++;
-         if((tiempoActual-tiempoInicio)>1000){
-            printf("Cuadros procesados el ultimo segundo: %d\r\n", cuardrosProcesados);
-            tiempoInicio = tiempoActual;
-            cuardrosProcesados = 0;
-            //guardar imagen
-            int jpgfile;
-            sprintf(bufferNombreArchivo, "myimage_%d.jpeg", nFrames);
-            if((jpgfile = open(bufferNombreArchivo, O_WRONLY | O_CREAT, 0660)) < 0){
-                perror("open");
-                exit(1);
-            }
-            write(jpgfile, buffer_start[sgteBufferALeer], bufferinfo.length);
-            close(jpgfile);
-            nFrames++;
-
-         }
 
          sgteBufferALeer++;
          sgteBufferALeer%=nBufferesAPedir;

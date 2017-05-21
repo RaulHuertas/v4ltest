@@ -18,7 +18,7 @@ void transmitirPorUDP(
 
 void transmitirPorUDP(
     int ancho, int alto, int formatoStream,
-    const unsigned char* datosATransmitir, int longDatos,
+    const void* datosATransmitir, int longDatos,
     int sockfd, struct sockaddr_in& serveraddr, int serverlen
 ){
     constexpr int sizePaquetes = 2*2048;
@@ -45,7 +45,7 @@ void transmitirPorUDP(
         int nDatosAEnviarEnEstePaquete = std::min(sizePaquetes, porEnviar);
         memcpy(
                datos,
-               &datosATransmitir[offsetDatos],
+               datosATransmitir+offsetDatos,
                nDatosAEnviarEnEstePaquete
                );datos+=nDatosAEnviarEnEstePaquete;
         const int packSize=nDatosAEnviarEnEstePaquete+headerSize;
