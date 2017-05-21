@@ -23,6 +23,8 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 
+#include "opencv2/opencv.hpp"
+
 static volatile sig_atomic_t terminar = 0;
 void signal_handler(int signal)
 {
@@ -220,17 +222,6 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-
-
-
-
-//    int jpgfile;
-//    if((jpgfile = open("myimage.jpeg", O_WRONLY | O_CREAT, 0660)) < 0){
-//        perror("open");
-//        exit(1);
-//    }
-//    write(jpgfile, buffer_start, bufferinfo.length);
-//    close(jpgfile);
 
 
     close(fd);
